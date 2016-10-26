@@ -25,10 +25,15 @@ getRegExp = (rule) ->
     # Whole-field behavior - word characters or spaces
     new RegExp('(^)(.*)$')
 
-getFindParams = (rule, filter, limit) ->
+getFindParams = (rule, filter, limit, firstTime) ->
+  # if there's an initialKey, the selector is just that id
+  if rule.initialKey and firstTime
+     selector = {_id:rule.initialKey}
+  else
+    # We need to extend so that we don't copy over rule.filter
+    selector = _.extend({}, rule.filter || {})
+
   # This is a different 'filter' - the selector from the settings
-  # We need to extend so that we don't copy over rule.filter
-  selector = _.extend({}, rule.filter || {})
   options = { limit: limit }
 
   # Match anything, no sort, limit X
@@ -82,28 +87,67 @@ class @AutoComplete
     @ruleDep = new Deps.Dependency
     @filterDep = new Deps.Dependency
     @loadingDep = new Deps.Dependency
-    
+
     # autosubscribe to the record set published by the server based on the filter
     # This will tear down server subscriptions when they are no longer being used.
     @sub = null
+
+    firstTimeA = true
+    firstTimeB = true
+    firstTimeC = true
+
     @comp = Deps.autorun =>
       # Stop any existing sub immediately, don't wait
       @sub?.stop()
 
-      return unless (rule = @matchedRule()) and (filter = @getFilter()) isnt null
+      if firstTimeA
+         for rule in @rules
+           if rule.initialKey
+             break
+         unless rule.initialKey
+           rule = null
+         firstTimeA = false
+
+      unless rule
+        rule = @matchedRule()
+
+      return unless (rule) and (filter = @getFilter()) isnt null
 
       # subscribe only for server-side collections
-      unless isServerSearch(rule)
+      if isServerSearch(rule)
+        [ selector, options ] = getFindParams(rule, filter, @limit, firstTimeC)
+
+        # console.debug 'Subscribing to <%s> in <%s>.<%s>', filter, rule.collection, rule.field
+        @setLoaded(false)
+        subName = rule.subscription || "autocomplete-recordset"
+        @sub = Meteor.subscribe(subName, selector, options, rule.collection, =>
+            if firstTimeB and rule.initialKey
+              doc = AutoCompleteRecords.findOne(rule.initialKey)
+              if (doc)
+                if (rule.fieldFunction)
+                  @setText(rule.fieldFunction(doc))
+                else
+                  @setText(doc[rule.field])
+                @setKey(doc[rule.key])
+
+            firstTimeB = false
+            firstTimeC = false
+            @setLoaded(true)
+        )
+      else
+        if firstTimeB and rule.initialKey
+          doc = rule.collection.findOne(rule.initialKey)
+
+          if (doc)
+            if rule.fieldFunction
+              @setText(rule.fieldFunction(doc))
+            else
+              @setText(doc[rule.field])
+            @setKey(doc[rule.key])
+
+          firstTimeB = false
+          firstTimeC = false
         @setLoaded(true) # Immediately loaded
-        return
-
-      [ selector, options ] = getFindParams(rule, filter, @limit)
-
-      # console.debug 'Subscribing to <%s> in <%s>.<%s>', filter, rule.collection, rule.field
-      @setLoaded(false)
-      subName = rule.subscription || "autocomplete-recordset"
-      @sub = Meteor.subscribe(subName,
-        selector, options, rule.collection, => @setLoaded(true))
 
   teardown: ->
     # Stop the reactive computation we started for this autocomplete instance
@@ -140,6 +184,9 @@ class @AutoComplete
     return unless @$element # Don't try to do this while loading
     startpos = @element.selectionStart
     val = @getText().substring(0, startpos)
+
+    #clear the key
+    #@removeKey()
 
     ###
       Matching on multiple expressions.
@@ -252,7 +299,10 @@ class @AutoComplete
     return true
 
   processSelection: (doc, rule) ->
-    replacement = getField(doc, rule.field)
+    if rule.fieldFunction
+      replacement = rule.fieldFunction(doc)
+    else
+      replacement = getField(doc, rule.field)
 
     unless isWholeField(rule)
       @replace(replacement, rule)
@@ -262,6 +312,9 @@ class @AutoComplete
       # Empty string or doesn't exist?
       # Single-field replacement: replace whole field
       @setText(replacement)
+
+      # if we have a key field, set it onto the element
+      @setKey(getField(doc, rule.key)) if rule.key
 
       # Field retains focus, but list is hidden unless another key is pressed
       # Must be deferred or onKeyUp will trigger and match again
@@ -298,6 +351,12 @@ class @AutoComplete
       @$element.val(text)
     else
       @$element.html(text)
+
+  setKey: (text) ->
+    @$element.prop('key',text)
+
+  removeKey: ->
+    @$element.removeProp('key')
 
   ###
     Rendering functions

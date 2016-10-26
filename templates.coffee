@@ -8,7 +8,7 @@ acEvents =
 Template.inputAutocomplete.events(acEvents)
 Template.textareaAutocomplete.events(acEvents)
 
-attributes = -> _.omit(@, 'settings') # Render all but the settings parameter
+attributes = -> _.omit(@, ['settings','initialKey']) # Render all but the settings and initial key parameters
 
 autocompleteHelpers = {
   attributes,

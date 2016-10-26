@@ -4,7 +4,7 @@ class Autocomplete
     # https://github.com/meteor/meteor/blob/devel/packages/mongo/collection.js
     Mongo.Collection._publishCursor(cursor, sub, "autocompleteRecords")
 
-Meteor.publish 'autocomplete-recordset', (selector, options, collName) ->
+Meteor.publish 'autocomplete-recordset', (selector, initialKey, options, collName) ->
   collection = global[collName]
   unless collection
     throw new Error(collName + ' is not defined on the global namespace of the server.')
@@ -24,4 +24,3 @@ Meteor.publish 'autocomplete-recordset', (selector, options, collName) ->
 
   # Mark the subscription ready after the initial addition of documents.
   this.ready()
-
