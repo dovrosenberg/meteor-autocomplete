@@ -185,7 +185,7 @@ class @AutoComplete
     startpos = @element.selectionStart
     val = @getText().substring(0, startpos)
 
-    #clear the key
+    #clear the key - DSR 10/16 - not sure why I put this is originally... it causes issues and I don't see what problem it solved
     #@removeKey()
 
     ###
